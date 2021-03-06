@@ -5,6 +5,7 @@
 #ifndef ATK_MODELLING_STATICDIODE_H
 #define ATK_MODELLING_STATICDIODE_H
 
+#include <ATK/Modelling/SPICE/Utilities.h>
 #include <ATK/Utility/fmath.h>
 
 namespace ATK
@@ -16,7 +17,7 @@ namespace ATK
   public:
     using DataType = DataType_;
 
-    StaticDiode(DataType Is = 1e-14, DataType N = 1.24, DataType Vt = 26e-3): Is(Is), N(N), Vt(Vt)
+    StaticDiode(DataType Is = 1e-14, DataType N = 1.24, DataType Vt = 26e-3): Is(Is), Vt(N * Vt)
     {
     }
     
@@ -25,7 +26,7 @@ namespace ATK
      */
     DataType get_current() const
     {
-      return Is * (direct * (precomp - 1) - indirect * (1 / precomp - 1));
+      return Is * ((precomp - 1) - (invprecomp - 1));
     }
     
     /**
@@ -33,7 +34,14 @@ namespace ATK
      */
     DataType get_gradient() const
     {
-      return Is / (N * Vt) * (direct * precomp + indirect / precomp);
+      if constexpr(indirect != 0)
+      {
+        return Is / Vt * (precomp / direct + invprecomp / indirect);
+      }
+      else
+      {
+        return Is / Vt * precomp / direct;
+      }
     }
     
     /**
@@ -41,15 +49,26 @@ namespace ATK
      */
     void precompute(DataType V0, DataType V1) const
     {
-      precomp = fmath::exp((V1 - V0) / (N * Vt));
+      precomp = fmath::exp((V1 - V0) / (Vt * direct));
+      if constexpr(direct == indirect)
+      {
+        invprecomp = 1 / precomp;
+      }
+      else if constexpr(indirect != 0)
+      {
+        invprecomp = fmath::exp((V0 - V1) / (Vt * indirect));
+      }
     }
 
   private:
     DataType Is;
-    DataType N;
     DataType Vt;
     mutable DataType precomp{0};
+    mutable DataType invprecomp{1};
   };
+
+#define DIODE_SEQ ((vt, 26e-3))((is, 1e-14))((n, 1.24))
+  HELPER(DiodeHelper, DIODE_SEQ, Diode)
 }
 
 #endif
